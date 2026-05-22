@@ -11,15 +11,9 @@ import {
   Subtitle2,
   Title3,
   makeStyles,
-  tokens
+  tokens,
 } from "@fluentui/react-components";
 import { readDocumentText } from "./office/word";
-import {
-  ClassificationLevel,
-  classifyText,
-  ClassificationResult,
-  getLevels
-} from "./classification/classifier";
 import {
   CatalogLabel,
   canSetLabel,
@@ -27,11 +21,14 @@ import {
   getCatalogLabels,
   getCurrentLabelId,
   isCatalogEnabled,
-  setLabel
+  setLabel,
 } from "./office/sensitivity";
 import { ClassificationCard } from "./components/ClassificationCard";
-import { MatchList } from "./components/MatchList";
+import { EvidenceList } from "./components/EvidenceList";
 import { ConfirmApplyDialog } from "./components/ConfirmApplyDialog";
+import { ClassificationLevel, ClassificationResult } from "./types";
+import { LABEL_NAME_CANDIDATES, LEVELS, getLevelById } from "./levels";
+import { classifyDocument, ClassifierApiError } from "./api/classify";
 
 const useStyles = makeStyles({
   root: {
@@ -41,30 +38,30 @@ const useStyles = makeStyles({
     padding: "16px",
     gap: "12px",
     boxSizing: "border-box",
-    backgroundColor: tokens.colorNeutralBackground1
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   header: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px"
+    gap: "4px",
   },
   actions: {
     display: "flex",
     gap: "8px",
-    flexWrap: "wrap"
+    flexWrap: "wrap",
   },
   scroll: {
     overflowY: "auto",
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    gap: "12px"
+    gap: "12px",
   },
   spinnerRow: {
     display: "flex",
     alignItems: "center",
-    gap: "8px"
-  }
+    gap: "8px",
+  },
 });
 
 interface AppProps {
@@ -72,18 +69,6 @@ interface AppProps {
 }
 
 type Phase = "idle" | "scanning" | "ready" | "applying" | "applied" | "error";
-
-const LABEL_NAME_CANDIDATES: Record<ClassificationLevel["id"], string[]> = {
-  Public: ["Public", "General Public", "Non-Business"],
-  Internal: ["Internal", "General", "Internal Use"],
-  Confidential: ["Confidential", "Confidential - Internal", "Confidential All Employees"],
-  HighlyConfidential: [
-    "Highly Confidential",
-    "Highly Confidential - Internal",
-    "Restricted",
-    "Strictly Confidential"
-  ]
-};
 
 export const App: React.FC<AppProps> = ({ host }) => {
   const styles = useStyles();
@@ -116,12 +101,27 @@ export const App: React.FC<AppProps> = ({ host }) => {
     setError(undefined);
     try {
       const text = await readDocumentText();
-      const r = classifyText(text);
+      if (!text.trim()) {
+        throw new Error("Document is empty. Add content before classifying.");
+      }
+      const r = await classifyDocument({ documentText: text, host: "Word" });
       setResult(r);
-      setChosenLevel(r.recommendedLevel);
+      setChosenLevel(getLevelById(r.classification));
       setPhase("ready");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      let msg: string;
+      if (e instanceof ClassifierApiError) {
+        msg = `Backend error (${e.status}): ${e.message}`;
+      } else if (e instanceof TypeError && e.message.includes("fetch")) {
+        msg =
+          "Cannot reach the classifier backend at https://localhost:4000. " +
+          "Make sure the server in /server is running and its HTTPS cert is trusted.";
+      } else if (e instanceof Error) {
+        msg = e.message;
+      } else {
+        msg = String(e);
+      }
+      setError(msg);
       setPhase("error");
     }
   }, []);
@@ -133,7 +133,10 @@ export const App: React.FC<AppProps> = ({ host }) => {
       setPhase("applying");
       setError(undefined);
       try {
-        const candidate = findLabelByNames(catalog, LABEL_NAME_CANDIDATES[chosenLevel.id]);
+        const candidate = findLabelByNames(
+          catalog,
+          LABEL_NAME_CANDIDATES[chosenLevel.id]
+        );
         if (!candidate) {
           throw new Error(
             `No matching sensitivity label found in your tenant for "${chosenLevel.label}". ` +
@@ -158,7 +161,7 @@ export const App: React.FC<AppProps> = ({ host }) => {
   );
 
   const currentLabel = catalog.find((l) => l.id === currentLabelId);
-  const levels = getLevels();
+  const recommendedLevel = result ? getLevelById(result.classification) : undefined;
 
   return (
     <div className={styles.root}>
@@ -166,25 +169,36 @@ export const App: React.FC<AppProps> = ({ host }) => {
         <Title3>Content Classifier</Title3>
         <Caption1>
           {host === Office.HostType.Word
-            ? "Scans the document body for sensitivity keywords and recommends a classification."
+            ? "Sends document content to the classifier backend, which grades it against your company policy and recommends a sensitivity label."
             : "Host not supported in this version."}
         </Caption1>
         {catalogEnabled ? (
           <Caption1>
             Sensitivity label catalog: <b>{catalog.length}</b> labels available.
-            {currentLabel ? <> Current label: <b>{currentLabel.name}</b>.</> : null}
+            {currentLabel ? (
+              <> Current label: <b>{currentLabel.name}</b>.</>
+            ) : null}
           </Caption1>
         ) : (
           <Caption1>
-            Sensitivity label catalog is not enabled in this session. Recommendations will still
-            work; applying a label may need to be done manually.
+            Sensitivity label catalog is not enabled in this session.
+            Recommendations will still work; applying a label may need to be
+            done manually.
           </Caption1>
         )}
       </div>
 
       <div className={styles.actions}>
-        <Button appearance="primary" onClick={runScan} disabled={phase === "scanning"}>
-          {phase === "scanning" ? "Scanning…" : result ? "Re-scan document" : "Scan document"}
+        <Button
+          appearance="primary"
+          onClick={runScan}
+          disabled={phase === "scanning"}
+        >
+          {phase === "scanning"
+            ? "Classifying…"
+            : result
+            ? "Re-classify document"
+            : "Classify document"}
         </Button>
       </div>
 
@@ -194,14 +208,14 @@ export const App: React.FC<AppProps> = ({ host }) => {
         {phase === "scanning" && (
           <div className={styles.spinnerRow}>
             <Spinner size="tiny" />
-            <Body1>Reading document content…</Body1>
+            <Body1>Reading content and asking the classifier…</Body1>
           </div>
         )}
 
         {phase === "error" && error && (
           <MessageBar intent="error">
             <MessageBarBody>
-              <MessageBarTitle>Something went wrong</MessageBarTitle>
+              <MessageBarTitle>Classification failed</MessageBarTitle>
               {error}
             </MessageBarBody>
           </MessageBar>
@@ -211,32 +225,34 @@ export const App: React.FC<AppProps> = ({ host }) => {
           <MessageBar intent="success">
             <MessageBarBody>
               <MessageBarTitle>Label applied</MessageBarTitle>
-              The "{chosenLevel.label}" sensitivity label has been set on this document.
+              The "{chosenLevel.label}" sensitivity label has been set on this
+              document.
             </MessageBarBody>
           </MessageBar>
         )}
 
-        {result && (
+        {result && recommendedLevel && (
           <>
             <Subtitle2>Recommendation</Subtitle2>
             <ClassificationCard
-              levels={levels}
-              recommended={result.recommendedLevel}
-              chosen={chosenLevel ?? result.recommendedLevel}
+              levels={LEVELS}
+              recommended={recommendedLevel}
+              chosen={chosenLevel ?? recommendedLevel}
               onChange={setChosenLevel}
-              usedDefault={result.usedDefault}
+              rationale={result.rationale}
+              confidence={result.confidence}
             />
 
-            <Subtitle2>Matches</Subtitle2>
-            {result.matches.length === 0 ? (
-              <Body1>
-                No keywords matched. Defaulted to <b>{result.recommendedLevel.label}</b>.
-              </Body1>
-            ) : (
-              <MatchList matches={result.matches} levels={levels} />
-            )}
+            <Subtitle2>Evidence</Subtitle2>
+            <EvidenceList
+              evidence={result.evidence}
+              policyReferences={result.policyReferences}
+            />
 
-            <Caption1>Scanned {result.scannedCharacters.toLocaleString()} characters.</Caption1>
+            <Caption1>
+              Model: {result.model}
+              {result.cache?.hit ? " · policy cache hit" : ""}
+            </Caption1>
 
             <div className={styles.actions}>
               <Button
@@ -256,7 +272,9 @@ export const App: React.FC<AppProps> = ({ host }) => {
         level={chosenLevel}
         canApplyProgrammatically={canApplyProgrammatically && catalogEnabled}
         catalogLabel={
-          chosenLevel ? findLabelByNames(catalog, LABEL_NAME_CANDIDATES[chosenLevel.id]) : undefined
+          chosenLevel
+            ? findLabelByNames(catalog, LABEL_NAME_CANDIDATES[chosenLevel.id])
+            : undefined
         }
         onCancel={() => setDialogOpen(false)}
         onConfirm={onConfirmApply}

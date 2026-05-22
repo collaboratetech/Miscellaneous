@@ -11,7 +11,7 @@ import {
   Field,
   Textarea
 } from "@fluentui/react-components";
-import { ClassificationLevel } from "../classification/classifier";
+import { ClassificationLevel } from "../types";
 import { CatalogLabel } from "../office/sensitivity";
 
 interface Props {

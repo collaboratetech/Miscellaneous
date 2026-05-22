@@ -6,9 +6,9 @@ import {
   Radio,
   RadioGroup,
   makeStyles,
-  tokens
+  tokens,
 } from "@fluentui/react-components";
-import { ClassificationId, ClassificationLevel } from "../classification/classifier";
+import { ClassificationId, ClassificationLevel } from "../types";
 
 const useStyles = makeStyles({
   card: {
@@ -18,21 +18,24 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "8px",
-    backgroundColor: tokens.colorNeutralBackground2
+    backgroundColor: tokens.colorNeutralBackground2,
   },
   row: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    flexWrap: "wrap"
-  }
+    flexWrap: "wrap",
+  },
 });
 
-const badgeColor: Record<ClassificationId, "informative" | "subtle" | "warning" | "danger"> = {
+const badgeColor: Record<
+  ClassificationId,
+  "informative" | "subtle" | "warning" | "danger"
+> = {
   Public: "informative",
   Internal: "subtle",
   Confidential: "warning",
-  HighlyConfidential: "danger"
+  HighlyConfidential: "danger",
 };
 
 interface Props {
@@ -40,7 +43,8 @@ interface Props {
   recommended: ClassificationLevel;
   chosen: ClassificationLevel;
   onChange: (level: ClassificationLevel) => void;
-  usedDefault: boolean;
+  rationale: string;
+  confidence: "low" | "medium" | "high";
 }
 
 export const ClassificationCard: React.FC<Props> = ({
@@ -48,7 +52,8 @@ export const ClassificationCard: React.FC<Props> = ({
   recommended,
   chosen,
   onChange,
-  usedDefault
+  rationale,
+  confidence,
 }) => {
   const styles = useStyles();
   return (
@@ -58,9 +63,9 @@ export const ClassificationCard: React.FC<Props> = ({
         <Badge appearance="filled" color={badgeColor[recommended.id]}>
           {recommended.label}
         </Badge>
-        {usedDefault && <Caption1>(default — no keywords matched)</Caption1>}
+        <Caption1>confidence: {confidence}</Caption1>
       </div>
-      <Caption1>{recommended.description}</Caption1>
+      <Body1>{rationale}</Body1>
       <Body1>Override before applying:</Body1>
       <RadioGroup
         value={chosen.id}
@@ -70,7 +75,11 @@ export const ClassificationCard: React.FC<Props> = ({
         }}
       >
         {levels.map((l) => (
-          <Radio key={l.id} value={l.id} label={`${l.label} — ${l.description}`} />
+          <Radio
+            key={l.id}
+            value={l.id}
+            label={`${l.label} — ${l.description}`}
+          />
         ))}
       </RadioGroup>
     </div>
