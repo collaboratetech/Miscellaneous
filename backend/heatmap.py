@@ -1,12 +1,18 @@
 """Time-decayed density heatmap.
 
-Each detection is splatted onto a 2D density grid as a Gaussian blob.
+Each detection is splatted onto a 2D density grid as a *filled
+rectangle* the size of its YOLO bounding box, then the grid is
+Gaussian-blurred to soften edges and merge nearby detections. The
+rectangle splat (vs the older point splat) means closer / larger
+detections contribute more total heat — which matches what a viewer
+expects "busy area" to look like on a perspective camera.
+
 Older detections contribute less via an exponential half-life decay,
 and anything older than the window is dropped entirely.
 
 The renderer composites the density onto the source frame as a coloured
 overlay (JET colormap by default), only drawing where density is above
-a small threshold so empty beach stays visible.
+a small fraction of the peak so empty beach stays visible.
 """
 from __future__ import annotations
 
@@ -24,6 +30,8 @@ import numpy as np
 class _Sample:
     x: float
     y: float
+    w: float
+    h: float
     weight: float
     timestamp: float
 
@@ -45,12 +53,17 @@ class HeatmapAccumulator:
         self._lock = threading.Lock()
         self._latest_count = 0
 
-    def add(self, points: list[tuple[float, float, float]], timestamp: float) -> None:
-        """Add detections from one frame. `points` is (x, y, weight)."""
+    def add(self, boxes: list[tuple[float, float, float, float, float]], timestamp: float) -> None:
+        """Add detections from one frame.
+
+        `boxes` is a list of (x, y, w, h, weight) where (x, y) is the
+        bbox centre and (w, h) is the bbox size — all in the same
+        coordinate space the caller will pass to `density()`.
+        """
         with self._lock:
-            for x, y, w in points:
-                self._samples.append(_Sample(x=x, y=y, weight=w, timestamp=timestamp))
-            self._latest_count = len(points)
+            for x, y, w, h, weight in boxes:
+                self._samples.append(_Sample(x=x, y=y, w=w, h=h, weight=weight, timestamp=timestamp))
+            self._latest_count = len(boxes)
             self._prune(now=timestamp)
 
     def _prune(self, *, now: float) -> None:
@@ -84,16 +97,26 @@ class HeatmapAccumulator:
             return grid
 
         decay_k = math.log(2.0) / self.half_life_seconds
-        # Splat: write the weight at the pixel, then Gaussian-blur the
-        # whole grid once. Splatting individual Gaussians per point is
-        # cleaner but ~50× slower for hundreds of points.
+        # Splat each detection as a filled rectangle the size of its
+        # bounding box, then Gaussian-blur the whole grid once. Per-pixel
+        # weight is constant so total contribution scales with bbox area
+        # — bigger / closer detections look hotter, which matches the
+        # camera's perspective view.
         for s in samples:
             age = max(0.0, now - s.timestamp)
-            w = s.weight * math.exp(-decay_k * age)
-            ix = int(round(s.x))
-            iy = int(round(s.y))
-            if 0 <= ix < width and 0 <= iy < height:
-                grid[iy, ix] += w
+            value = s.weight * math.exp(-decay_k * age)
+            x1 = max(0, int(round(s.x - s.w / 2.0)))
+            y1 = max(0, int(round(s.y - s.h / 2.0)))
+            x2 = min(width, int(round(s.x + s.w / 2.0)) + 1)
+            y2 = min(height, int(round(s.y + s.h / 2.0)) + 1)
+            if x2 > x1 and y2 > y1:
+                grid[y1:y2, x1:x2] += value
+            else:
+                # Fallback for zero-size bboxes (shouldn't normally happen).
+                ix = int(round(s.x))
+                iy = int(round(s.y))
+                if 0 <= ix < width and 0 <= iy < height:
+                    grid[iy, ix] += value
 
         ksize = int(self.blob_sigma * 6) | 1  # odd
         cv2.GaussianBlur(grid, (ksize, ksize), self.blob_sigma, dst=grid)

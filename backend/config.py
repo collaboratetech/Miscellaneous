@@ -43,9 +43,21 @@ HEATMAP_HALF_LIFE_SECONDS = 180  # 3 minutes
 # distant figures at the cost of some false positives.
 DETECTION_CONFIDENCE = 0.20
 
-# Gaussian blob sigma (in pixels at the working resolution) used to
-# spread each detection into the density grid.
-HEATMAP_BLOB_SIGMA = 22.0
+# YOLO/COCO class IDs we treat as "evidence of activity":
+#   0  = person
+#   25 = umbrella (beach umbrellas are bigger and easier to detect
+#                  than prone bodies — strong proxy for occupied spots)
+TARGET_CLASSES: dict[int, str] = {0: "person", 25: "umbrella"}
+
+# Per-class weight in the density grid. People are the primary signal;
+# an umbrella usually covers 1-3 people, so weight it < 1.
+CLASS_WEIGHTS: dict[str, float] = {"person": 1.0, "umbrella": 0.5}
+
+# Final Gaussian blur sigma applied AFTER splatting each detection as
+# its bounding-box rectangle. With box-shape splatting the rectangle
+# already provides spatial extent, so this only needs to soften edges
+# and merge nearby detections.
+HEATMAP_BLOB_SIGMA = 12.0
 
 # Internal working resolution for analysis. Larger = better at small
 # people in the distance + slower. The Santa Ponsa cam frames the beach

@@ -20,18 +20,27 @@ YouTube live  ──►  yt-dlp (HLS URL)  ──►  OpenCV frame capture
 
 ## What the heatmap shows
 
-Each detected person contributes a Gaussian blob at their bounding-box
-centre. (An earlier version used the bbox bottom — "foot point" — but
-beach cams catch a lot of people lying on sunbeds or towels, where the
-bbox is horizontal and the bottom edge is the side of the body, not
-the feet. Centre is correct for any orientation.)
+Each detected target (**person** or **beach umbrella**) is splatted
+onto the density grid as a *filled rectangle the size of its bounding
+box*, then the grid is Gaussian-blurred. So a person fills roughly the
+pixels they occupy, and a closer / larger person contributes more
+total heat than a smaller distant one — the heatmap reflects what the
+camera actually sees.
+
+Umbrellas are detected because beach cams catch lots of prone bodies
+that YOLO struggles with, but the rented umbrellas above those bodies
+are big, brightly coloured, and easy to spot. They contribute to the
+heatmap at half the per-pixel weight of a person, on the assumption
+that one umbrella ≈ 1–3 occupants. (Note: in *very* aerial views like
+the Santa Ponsa cam, even umbrellas can be too small at 15 px — see
+the daytime sample in `samples/`.)
 
 Detections persist for 10 minutes but decay with a 3-minute half-life,
-so the colour intensity reflects "where people have been recently",
+so the colour intensity reflects "where activity has been recently",
 weighted toward right now. Empty stretches of beach stay uncoloured.
-The numeric **People in frame** counter is just the most recent
-detection count, mapped to four busyness bands (quiet / moderate /
-busy / packed).
+The numeric **People in frame** + **Umbrellas** counters show the
+most-recent-frame detection counts; busyness (quiet / moderate / busy
+/ packed) is mapped from the person count alone.
 
 ## Project layout
 
@@ -133,7 +142,9 @@ so it'll show up automatically.
 | `HEATMAP_HALF_LIFE_SECONDS`   | How quickly recent activity dominates older activity      | `180`        |
 | `HEATMAP_BLOB_SIGMA`          | Size of each person's contribution (pixels @ analysis res)| `22.0`       |
 | `ANALYSIS_WIDTH`              | Inference resolution; higher = more accurate + slower     | `1920`       |
-| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a person"                   | `0.20`       |
+| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a target"                   | `0.20`       |
+| `TARGET_CLASSES`              | COCO classes to detect (default: person + umbrella)       | see config   |
+| `CLASS_WEIGHTS`               | Per-class heatmap weighting                               | person=1.0, umbrella=0.5 |
 | `YOLO_MODEL`                  | `yolov8n.pt` (fastest) … `yolov8x.pt` (most accurate)     | `yolov8m.pt` |
 | `BUSY_THRESHOLDS`             | People-count bands for the busyness label                 | see config   |
 

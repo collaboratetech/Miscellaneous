@@ -58,6 +58,7 @@ class BeachStats(BaseModel):
     id: str
     name: str
     people_count: int
+    umbrella_count: int
     busyness: str
     frames_processed: int
     last_frame_age_seconds: float | None
@@ -99,6 +100,7 @@ def beach_stats(beach_id: str) -> BeachStats:
             id=analyzer.beach.id,
             name=analyzer.beach.name,
             people_count=s.last_people_count,
+            umbrella_count=s.last_umbrella_count,
             busyness=_busyness_label(s.last_people_count),
             frames_processed=s.frames_processed,
             last_frame_age_seconds=age,

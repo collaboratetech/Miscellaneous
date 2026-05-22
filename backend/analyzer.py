@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from . import config as cfg
-from .detect import detect_people
+from .detect import detect_targets
 from .heatmap import HeatmapAccumulator, render_overlay
 from .stream import FrameSource, LocalImageCapture, YouTubeLiveCapture
 
@@ -31,6 +31,7 @@ class BeachState:
     last_density_jpeg: bytes | None = None
     last_frame_time: float = 0.0
     last_people_count: int = 0
+    last_umbrella_count: int = 0
     frames_processed: int = 0
     last_error: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -87,14 +88,20 @@ class BeachAnalyzer:
                     self.state.last_error = status
             return
 
-        detections, (aw, ah) = detect_people(
+        detections, (aw, ah) = detect_targets(
             frame.image,
             model_path=cfg.YOLO_MODEL,
             confidence=cfg.DETECTION_CONFIDENCE,
             analysis_width=cfg.ANALYSIS_WIDTH,
+            target_classes=cfg.TARGET_CLASSES,
         )
-        points = [(d.x, d.y, d.confidence) for d in detections]
-        self._heatmap.add(points, timestamp=frame.timestamp)
+        boxes = [
+            (d.x, d.y, d.w, d.h, d.confidence * cfg.CLASS_WEIGHTS.get(d.kind, 1.0))
+            for d in detections
+        ]
+        self._heatmap.add(boxes, timestamp=frame.timestamp)
+        people = sum(1 for d in detections if d.kind == "person")
+        umbrellas = sum(1 for d in detections if d.kind == "umbrella")
 
         density = self._heatmap.density(width=aw, height=ah, now=frame.timestamp)
         # Upscale density to source-frame size for the overlay.
@@ -112,13 +119,14 @@ class BeachAnalyzer:
             self.state.last_overlay_jpeg = overlay_jpeg
             self.state.last_density_jpeg = density_jpeg
             self.state.last_frame_time = frame.timestamp
-            self.state.last_people_count = len(detections)
+            self.state.last_people_count = people
+            self.state.last_umbrella_count = umbrellas
             self.state.frames_processed += 1
             self.state.last_error = None
 
         log.debug(
-            "%s: frame %d, %d people detected",
-            self.beach.id, self.state.frames_processed, len(detections),
+            "%s: frame %d, %d people + %d umbrellas",
+            self.beach.id, self.state.frames_processed, people, umbrellas,
         )
 
     def snapshot(self) -> BeachState:

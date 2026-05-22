@@ -39,8 +39,19 @@ missed entirely.
 
 ## `detection-annotated.jpg`
 
-Per-person annotation on the crowded-beach photo: yellow bbox, green
-dot = bbox centre (where heat is placed now), magenta dot = old
-foot-point. Shows why centres are the right choice for a beach cam:
-prone bodies have horizontal bboxes whose bottom edge is the side of
-the person, not their feet.
+Per-detection annotation on the crowded-beach photo: green box =
+person, cyan box = umbrella, dot at bbox centre. Each box is what
+gets splatted into the heatmap.
+
+## `santa-ponsa-daytime.jpg`
+
+YouTube thumbnail from a *different* video (`ODydh0G5qEk`) referenced
+on `mallorca-beaches.com/en/santa-ponsa-beach/`. Same camera operator
+as the night shot but daytime + properly labelled "Santa Ponsa".
+
+## `santa-ponsa-daytime-overlay.jpg`
+
+Heatmap overlay on the daytime image. Each person on the promenade
+now gets a body-shaped heat patch (bbox-shape splat). The umbrella
+class wasn't fired for this image — the beach umbrellas in the mid-
+distance are too small (~15 px) for YOLO/COCO even at 1920 inference.

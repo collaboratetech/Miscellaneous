@@ -5,6 +5,7 @@ const els = {
   view: document.getElementById('view'),
   refresh: document.getElementById('refresh'),
   count: document.getElementById('count'),
+  umbrellas: document.getElementById('umbrellas'),
   busyness: document.getElementById('busyness'),
   age: document.getElementById('age'),
   frames: document.getElementById('frames'),
@@ -49,6 +50,7 @@ async function refreshStats() {
     if (!res.ok) throw new Error('stats failed');
     const s = await res.json();
     els.count.textContent = s.people_count;
+    els.umbrellas.textContent = s.umbrella_count;
     setBusyness(s.busyness);
     els.age.textContent = formatAge(s.last_frame_age_seconds);
     els.frames.textContent = s.frames_processed;

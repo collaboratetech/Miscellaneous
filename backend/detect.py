@@ -1,14 +1,15 @@
-"""Person detection via YOLO.
+"""YOLO detection for beach-activity targets.
 
-Returns per-person bounding-box centres. A "foot point" (centre-bottom
-of box) makes sense for standing crowds, but on a beach cam most
-detections are people lying flat on sunbeds or towels — the bbox is
-horizontal and the bottom edge is the side of their body, not their
-feet. Bbox centre is correct for any orientation.
+Detects two COCO classes: `person` (0) and `umbrella` (25). On a beach
+cam most people lie flat on sunbeds or towels — visually small and
+sometimes occluded — but their umbrellas are large, brightly coloured
+and easy to detect. Treating umbrellas as a secondary signal recovers
+busy zones that pure person-detection misses on wide aerial shots.
 
-The bbox width/height come along so callers can weight by apparent
-size (closer / larger people contributing more density), or render
-per-detection rectangles instead of point splats.
+Each detection returns its bbox centre + width/height in
+analysis-resolution pixels. Centres (not the bbox bottom) are the right
+localization for any orientation: a person lying horizontally has a
+wide bbox whose bottom edge is the side of their body, not their feet.
 """
 from __future__ import annotations
 
@@ -27,12 +28,13 @@ _model = None
 
 @dataclass
 class Detection:
-    """One person detection in analysis-resolution pixel coordinates."""
+    """One detection in analysis-resolution pixel coordinates."""
 
-    x: float  # bbox centre, x
-    y: float  # bbox centre, y
-    w: float  # bbox width
-    h: float  # bbox height
+    kind: str  # "person" or "umbrella"
+    x: float   # bbox centre, x
+    y: float   # bbox centre, y
+    w: float   # bbox width
+    h: float   # bbox height
     confidence: float
 
 
@@ -46,14 +48,19 @@ def _load_model(model_path: str):
     return _model
 
 
-def detect_people(
+def detect_targets(
     frame_bgr: np.ndarray,
     *,
     model_path: str,
     confidence: float,
     analysis_width: int,
+    target_classes: dict[int, str],
 ) -> tuple[list[Detection], tuple[int, int]]:
-    """Run person detection on a frame.
+    """Run YOLO on a frame and return tagged detections.
+
+    `target_classes` maps COCO class ID -> human label
+    (e.g. `{0: "person", 25: "umbrella"}`). Detections of other classes
+    are discarded.
 
     Returns (detections, (analysis_width, analysis_height)). The
     detection coordinates are in the analysis-resolution space, not
@@ -67,11 +74,10 @@ def detect_people(
     resized = cv2.resize(frame_bgr, (analysis_width, target_h), interpolation=cv2.INTER_AREA)
 
     # Ultralytics handles BGR->RGB internally when given a numpy frame.
-    # `classes=[0]` restricts to the COCO "person" class.
     results = model.predict(
         source=resized,
         conf=confidence,
-        classes=[0],
+        classes=list(target_classes.keys()),
         verbose=False,
     )
 
@@ -81,10 +87,15 @@ def detect_people(
         if boxes is not None and boxes.xyxy is not None:
             xyxy = boxes.xyxy.cpu().numpy()
             confs = boxes.conf.cpu().numpy() if boxes.conf is not None else np.ones(len(xyxy))
-            for (x1, y1, x2, y2), c in zip(xyxy, confs):
+            cls_ids = boxes.cls.cpu().numpy().astype(int) if boxes.cls is not None else np.zeros(len(xyxy), dtype=int)
+            for (x1, y1, x2, y2), c, cid in zip(xyxy, confs, cls_ids):
+                kind = target_classes.get(int(cid))
+                if kind is None:
+                    continue
                 cx = (x1 + x2) / 2.0
                 cy = (y1 + y2) / 2.0
                 detections.append(Detection(
+                    kind=kind,
                     x=float(cx), y=float(cy),
                     w=float(x2 - x1), h=float(y2 - y1),
                     confidence=float(c),
