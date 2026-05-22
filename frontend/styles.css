@@ -1,0 +1,147 @@
+:root {
+  --bg: #0b1722;
+  --panel: #11233a;
+  --text: #e8eef5;
+  --muted: #8aa0b8;
+  --accent: #4cc9f0;
+  --quiet: #4cc9f0;
+  --moderate: #f2c14e;
+  --busy: #f08a3c;
+  --packed: #ef476f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+header {
+  padding: 20px 28px 0;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 0.2px;
+}
+
+.tagline {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+main {
+  padding: 16px 28px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 14px;
+  background: var(--panel);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.controls label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.controls select,
+.controls button {
+  background: #0b1a2c;
+  color: var(--text);
+  border: 1px solid #1d3553;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.controls button {
+  cursor: pointer;
+}
+.controls button:hover {
+  border-color: var(--accent);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.busyness-quiet    { color: var(--quiet); }
+.busyness-moderate { color: var(--moderate); }
+.busyness-busy     { color: var(--busy); }
+.busyness-packed   { color: var(--packed); }
+
+.viewer {
+  position: relative;
+  background: var(--panel);
+  border-radius: 10px;
+  overflow: hidden;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.status.hidden { display: none; }
+
+footer {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}

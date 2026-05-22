@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mallorca Beach Heatmap</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Mallorca Beach Heatmap</h1>
+    <p class="tagline">Live crowd density from public beach webcams.</p>
+  </header>
+
+  <main>
+    <section class="controls">
+      <label for="beach">Beach:</label>
+      <select id="beach"></select>
+
+      <label for="view">View:</label>
+      <select id="view">
+        <option value="overlay" selected>Heatmap overlay</option>
+        <option value="frame">Raw frame</option>
+        <option value="heatmap">Heatmap only</option>
+      </select>
+
+      <button id="refresh">Refresh now</button>
+    </section>
+
+    <section class="stats">
+      <div class="stat">
+        <div class="stat-label">People in frame</div>
+        <div class="stat-value" id="count">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Busyness</div>
+        <div class="stat-value" id="busyness">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Last frame</div>
+        <div class="stat-value" id="age">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Frames analysed</div>
+        <div class="stat-value" id="frames">—</div>
+      </div>
+    </section>
+
+    <section class="viewer">
+      <img id="viewer-img" alt="Beach view" />
+      <div id="viewer-status" class="status">Waiting for the first frame…</div>
+    </section>
+
+    <footer>
+      <p>
+        Heatmap accumulates the last 10 minutes of detections with a 3-minute
+        half-life. Hotspots show where people have stood, not just where they
+        are right now.
+      </p>
+    </footer>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
