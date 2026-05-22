@@ -20,13 +20,18 @@ YouTube live  ──►  yt-dlp (HLS URL)  ──►  OpenCV frame capture
 
 ## What the heatmap shows
 
-Each detected person contributes a Gaussian blob at their estimated foot
-position. Detections persist for 10 minutes but decay with a 3-minute
-half-life, so the colour intensity reflects "where people have been
-recently", weighted toward right now. Empty stretches of beach stay
-uncoloured. The numeric **People in frame** counter is just the most
-recent detection count, mapped to four busyness bands (quiet / moderate
-/ busy / packed).
+Each detected person contributes a Gaussian blob at their bounding-box
+centre. (An earlier version used the bbox bottom — "foot point" — but
+beach cams catch a lot of people lying on sunbeds or towels, where the
+bbox is horizontal and the bottom edge is the side of the body, not
+the feet. Centre is correct for any orientation.)
+
+Detections persist for 10 minutes but decay with a 3-minute half-life,
+so the colour intensity reflects "where people have been recently",
+weighted toward right now. Empty stretches of beach stay uncoloured.
+The numeric **People in frame** counter is just the most recent
+detection count, mapped to four busyness bands (quiet / moderate /
+busy / packed).
 
 ## Project layout
 

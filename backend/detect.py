@@ -1,9 +1,14 @@
 """Person detection via YOLO.
 
-Returns per-person foot positions (centre-bottom of each bounding box),
-which is what we want for a top-down-ish heatmap of where people stand
-on the beach. Bounding-box centres bias toward where torsos appear,
-which sits higher up the frame and clusters less helpfully.
+Returns per-person bounding-box centres. A "foot point" (centre-bottom
+of box) makes sense for standing crowds, but on a beach cam most
+detections are people lying flat on sunbeds or towels — the bbox is
+horizontal and the bottom edge is the side of their body, not their
+feet. Bbox centre is correct for any orientation.
+
+The bbox width/height come along so callers can weight by apparent
+size (closer / larger people contributing more density), or render
+per-detection rectangles instead of point splats.
 """
 from __future__ import annotations
 
@@ -22,8 +27,12 @@ _model = None
 
 @dataclass
 class Detection:
-    x: float  # foot point, in analysis-resolution pixels
-    y: float
+    """One person detection in analysis-resolution pixel coordinates."""
+
+    x: float  # bbox centre, x
+    y: float  # bbox centre, y
+    w: float  # bbox width
+    h: float  # bbox height
     confidence: float
 
 
@@ -73,8 +82,12 @@ def detect_people(
             xyxy = boxes.xyxy.cpu().numpy()
             confs = boxes.conf.cpu().numpy() if boxes.conf is not None else np.ones(len(xyxy))
             for (x1, y1, x2, y2), c in zip(xyxy, confs):
-                foot_x = (x1 + x2) / 2.0
-                foot_y = y2  # bottom of the box ≈ feet
-                detections.append(Detection(x=float(foot_x), y=float(foot_y), confidence=float(c)))
+                cx = (x1 + x2) / 2.0
+                cy = (y1 + y2) / 2.0
+                detections.append(Detection(
+                    x=float(cx), y=float(cy),
+                    w=float(x2 - x1), h=float(y2 - y1),
+                    confidence=float(c),
+                ))
 
     return detections, (analysis_width, target_h)

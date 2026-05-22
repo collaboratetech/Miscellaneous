@@ -31,7 +31,16 @@ may differ from the live content).
 
 ## `santa-ponsa-camera-overlay.jpg`
 
-The heatmap overlay produced by the **new default** model (`yolov8m`
-@ 1920 px, conf=0.20) running against `santa-ponsa-camera-view.jpg`.
-Demonstrates that the upgraded defaults catch a person on the sand
-that the original `yolov8n` @ 960 defaults missed entirely.
+The heatmap overlay produced by the **current defaults** (`yolov8m`
+@ 1920 px, conf=0.20, bbox-centre splat) running against
+`santa-ponsa-camera-view.jpg`. Demonstrates that the upgraded defaults
+catch a person on the sand that the original `yolov8n` @ 960 defaults
+missed entirely.
+
+## `detection-annotated.jpg`
+
+Per-person annotation on the crowded-beach photo: yellow bbox, green
+dot = bbox centre (where heat is placed now), magenta dot = old
+foot-point. Shows why centres are the right choice for a beach cam:
+prone bodies have horizontal bboxes whose bottom edge is the side of
+the person, not their feet.
