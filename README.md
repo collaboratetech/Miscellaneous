@@ -121,16 +121,31 @@ so it'll show up automatically.
 
 ## Tuning knobs (`backend/config.py`)
 
-| Setting                       | Effect                                                    |
-| ----------------------------- | --------------------------------------------------------- |
-| `FRAME_INTERVAL_SECONDS`      | Lower = livelier UI, higher CPU                           |
-| `HEATMAP_WINDOW_SECONDS`      | How far back the heatmap "remembers"                      |
-| `HEATMAP_HALF_LIFE_SECONDS`   | How quickly recent activity dominates older activity      |
-| `HEATMAP_BLOB_SIGMA`          | Size of each person's contribution (pixels @ analysis res)|
-| `ANALYSIS_WIDTH`              | Inference resolution; higher = more accurate + slower     |
-| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a person"                   |
-| `YOLO_MODEL`                  | `yolov8n.pt` (fastest) … `yolov8x.pt` (most accurate)     |
-| `BUSY_THRESHOLDS`             | People-count bands for the busyness label                 |
+| Setting                       | Effect                                                    | Default      |
+| ----------------------------- | --------------------------------------------------------- | ------------ |
+| `FRAME_INTERVAL_SECONDS`      | Lower = livelier UI, higher CPU                           | `5.0`        |
+| `HEATMAP_WINDOW_SECONDS`      | How far back the heatmap "remembers"                      | `600`        |
+| `HEATMAP_HALF_LIFE_SECONDS`   | How quickly recent activity dominates older activity      | `180`        |
+| `HEATMAP_BLOB_SIGMA`          | Size of each person's contribution (pixels @ analysis res)| `22.0`       |
+| `ANALYSIS_WIDTH`              | Inference resolution; higher = more accurate + slower     | `1920`       |
+| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a person"                   | `0.20`       |
+| `YOLO_MODEL`                  | `yolov8n.pt` (fastest) … `yolov8x.pt` (most accurate)     | `yolov8m.pt` |
+| `BUSY_THRESHOLDS`             | People-count bands for the busyness label                 | see config   |
+
+### Picking a YOLO model
+
+The Santa Ponsa cam (`multimediatres.com`, hosted on YouTube) frames
+the beach from a hotel-mounted elevated angle. People on the sand are
+~30-80 px tall at 1920 px inference width. yolov8n misses most of
+them; yolov8m roughly doubles recall at ~5× the CPU cost per frame.
+
+| Model         | Weights | Per-frame CPU (1920px) | Use when                          |
+| ------------- | ------- | ---------------------- | --------------------------------- |
+| `yolov8n.pt`  |  ~6 MB  | ~0.2 s                 | Low-spec server, close-up cameras |
+| `yolov8m.pt`  | ~50 MB  | ~1-3 s                 | **Default** — recent laptop CPU   |
+| `yolov8x.pt`  | ~130 MB | ~3-5 s                 | GPU available, max accuracy       |
+
+Run times are rough — a GPU with CUDA reduces all of these by ~10-50×.
 
 ## Known limits
 
@@ -144,10 +159,16 @@ so it'll show up automatically.
   Bumping `YOLO_MODEL` to `yolov8m.pt` and `ANALYSIS_WIDTH` to 1920
   helps a lot at the cost of ~5× CPU per frame.
 - **YouTube bot-detection.** Cloud / datacenter IPs hit "confirm you're
-  not a bot" gates from YouTube. Run from a residential network, or
-  pass browser cookies to `yt-dlp` (via `cookiefile` in
-  `stream.py:_resolve_hls`'s `ydl_opts`). The `BEACH_HEATMAP_SAMPLE_IMAGE`
-  env var bypasses YouTube entirely for testing.
+  not a bot" gates from YouTube. The default config uses the
+  `tv_embedded` player client, which bypasses the gate in most cases;
+  if it stops working, pass browser cookies to `yt-dlp` via `cookiefile`
+  in `stream.py:_resolve_hls`'s `ydl_opts`, or run from a residential
+  network. The `BEACH_HEATMAP_SAMPLE_IMAGE` env var bypasses YouTube
+  entirely for testing.
+- **HLS segment IP-binding.** googlevideo signs each video segment URL
+  to the requesting IP. Hosts behind a NAT pool with rotating egress
+  IPs (some CI / sandbox setups) will get 403 on the `.ts` files even
+  though the manifest loads. A single stable egress IP fixes it.
 - **YouTube TOS.** Reading the HLS manifest via `yt-dlp` is fine for
   personal use; check the stream owner's terms before redistributing.
 - **No persistence.** Heatmap state is in-memory and resets on restart.

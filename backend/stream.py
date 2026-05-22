@@ -83,12 +83,19 @@ class YouTubeLiveCapture(FrameSource):
         self._last_status: str | None = None
 
     def _resolve_hls(self) -> str:
-        """Ask yt-dlp for the best HLS manifest URL <= target_height."""
+        """Ask yt-dlp for the best HLS manifest URL <= target_height.
+
+        Uses the `tv_embedded` player client because the default web
+        client hits "confirm you're not a bot" gates on many cloud /
+        datacenter IPs. The TV-embedded client returns the same
+        live-broadcast HLS manifests without the gate.
+        """
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
             "format": f"best[protocol^=m3u8][height<={self.target_height}]/best[protocol^=m3u8]/best",
+            "extractor_args": {"youtube": {"player_client": ["tv_embedded", "default"]}},
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(self.youtube_url, download=False)
