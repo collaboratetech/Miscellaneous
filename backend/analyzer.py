@@ -8,6 +8,7 @@ the HTTP layer to serve.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -18,7 +19,7 @@ import numpy as np
 from . import config as cfg
 from .detect import detect_people
 from .heatmap import HeatmapAccumulator, render_overlay
-from .stream import YouTubeLiveCapture
+from .stream import FrameSource, LocalImageCapture, YouTubeLiveCapture
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ class BeachAnalyzer:
         )
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._capture = YouTubeLiveCapture(beach.youtube_url)
+        self._capture: FrameSource = _build_source(beach)
 
     def start(self) -> None:
         if self._thread is not None:
@@ -80,6 +81,10 @@ class BeachAnalyzer:
     def _tick(self) -> None:
         frame = self._capture.read()
         if frame is None:
+            status = self._capture.status()
+            if status:
+                with self.state.lock:
+                    self.state.last_error = status
             return
 
         detections, (aw, ah) = detect_people(
@@ -119,6 +124,20 @@ class BeachAnalyzer:
     def snapshot(self) -> BeachState:
         # Caller is expected to access state under state.lock if needed.
         return self.state
+
+
+def _build_source(beach: cfg.Beach) -> FrameSource:
+    """Pick a frame source.
+
+    `BEACH_HEATMAP_SAMPLE_IMAGE` overrides the live stream with a local
+    image file for every beach — useful for testing the rest of the
+    pipeline when the live source isn't reachable.
+    """
+    sample = os.environ.get("BEACH_HEATMAP_SAMPLE_IMAGE")
+    if sample:
+        log.info("Using LocalImageCapture (BEACH_HEATMAP_SAMPLE_IMAGE=%s)", sample)
+        return LocalImageCapture(sample)
+    return YouTubeLiveCapture(beach.youtube_url)
 
 
 def _encode_jpeg(image: np.ndarray, quality: int = 80) -> bytes:

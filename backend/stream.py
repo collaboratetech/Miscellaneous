@@ -1,9 +1,14 @@
-"""Pull frames from a YouTube live stream.
+"""Frame sources.
 
-YouTube live URLs aren't directly readable by OpenCV — we ask yt-dlp
-for the underlying HLS manifest, then let OpenCV open that. The HLS
-playlist URL is short-lived (typically minutes), so we refresh it
-whenever the capture stalls.
+Production source: a YouTube live URL resolved to an HLS playlist via
+yt-dlp, then read by OpenCV. HLS playlist URLs are short-lived, so we
+refresh whenever the capture stalls.
+
+Dev/test source: a local image file, returned once per `read()` call
+with a fresh timestamp. Useful for first-run smoke tests, and for
+environments where YouTube isn't reachable (corporate proxies,
+datacenter IPs that hit bot-detection, offline laptops). Enabled by
+setting `BEACH_HEATMAP_SAMPLE_IMAGE=/path/to/image.jpg`.
 """
 from __future__ import annotations
 
@@ -24,8 +29,43 @@ class Frame:
     timestamp: float
 
 
-class YouTubeLiveCapture:
-    """Iterator-style frame source for a YouTube live URL.
+class FrameSource:
+    """Common interface for anything that yields frames over time."""
+
+    def read(self) -> Frame | None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def close(self) -> None:  # pragma: no cover - interface
+        pass
+
+    def status(self) -> str | None:
+        """Optional human-readable status (None on healthy)."""
+        return None
+
+
+class LocalImageCapture(FrameSource):
+    """Returns the same on-disk image for every `read()` call.
+
+    Useful for testing the detection + heatmap + HTTP layers without a
+    live stream. Each call returns the image with a fresh timestamp, so
+    the heatmap accumulator still ages detections as if they were live.
+    """
+
+    def __init__(self, image_path: str) -> None:
+        self.image_path = image_path
+        self._image = cv2.imread(image_path)
+        if self._image is None:
+            raise RuntimeError(f"Could not read sample image: {image_path}")
+        log.info("LocalImageCapture loaded %s (%dx%d)",
+                 image_path, self._image.shape[1], self._image.shape[0])
+
+    def read(self) -> Frame | None:
+        # Return a copy so downstream code can draw on it safely.
+        return Frame(image=self._image.copy(), timestamp=time.time())
+
+
+class YouTubeLiveCapture(FrameSource):
+    """Frame source for a YouTube live URL.
 
     Call `read()` to get the next available frame. Returns None if the
     stream is temporarily unreadable; the caller decides whether to
@@ -40,6 +80,7 @@ class YouTubeLiveCapture:
         self._hls_url: str | None = None
         self._last_resolve = 0.0
         self._consecutive_failures = 0
+        self._last_status: str | None = None
 
     def _resolve_hls(self) -> str:
         """Ask yt-dlp for the best HLS manifest URL <= target_height."""
@@ -80,8 +121,10 @@ class YouTubeLiveCapture:
         if self._cap is None:
             try:
                 self._open()
-            except Exception:
+                self._last_status = None
+            except Exception as e:
                 log.exception("Failed to open stream")
+                self._last_status = f"stream open failed: {e}"
                 self._consecutive_failures += 1
                 return None
 
@@ -90,18 +133,24 @@ class YouTubeLiveCapture:
         if not ok or frame is None:
             self._consecutive_failures += 1
             log.warning("Frame read failed (%d in a row)", self._consecutive_failures)
+            self._last_status = f"frame read failed ({self._consecutive_failures} in a row)"
             # HLS playlist URLs expire; reopen on repeated failure.
             if self._consecutive_failures >= 3:
                 try:
                     self._open()
-                except Exception:
+                except Exception as e:
                     log.exception("Reopen failed")
+                    self._last_status = f"stream reopen failed: {e}"
             return None
 
         self._consecutive_failures = 0
+        self._last_status = None
         return Frame(image=frame, timestamp=time.time())
 
     def close(self) -> None:
         if self._cap is not None:
             self._cap.release()
             self._cap = None
+
+    def status(self) -> str | None:
+        return self._last_status

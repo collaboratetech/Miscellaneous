@@ -47,8 +47,10 @@ frontend/
 
 ## Run it
 
-Python 3.11+ recommended. The first run downloads `yolov8n.pt` (~6 MB)
-from Ultralytics on first inference.
+Python 3.11+ recommended. Needs `ffmpeg` on the system PATH for OpenCV
+to read HLS streams (`apt install ffmpeg` / `brew install ffmpeg`). The
+first run downloads `yolov8n.pt` (~6 MB) from Ultralytics on first
+inference.
 
 ```bash
 cd backend
@@ -61,6 +63,23 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 Then open <http://localhost:8000>.
+
+### Smoke test without YouTube
+
+YouTube blocks anonymous traffic from many cloud / datacenter IPs with
+a "confirm you're not a bot" challenge, so live capture won't work
+from CI runners or VMs without browser cookies. To verify the
+detection + heatmap + HTTP layers anyway, point the analyzer at a
+local image:
+
+```bash
+BEACH_HEATMAP_SAMPLE_IMAGE=samples/crowded-beach.jpg \
+  uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+The server then loops on that image as if it were a one-frame stream.
+`samples/served-overlay.jpg` and `samples/ui-overlay.png` in this repo
+were both produced by exactly this command.
 
 The first frame can take 30–60 s on first run (YOLO download + model
 warm-up). Subsequent restarts are quick. CPU-only inference at the
@@ -120,6 +139,15 @@ so it'll show up automatically.
   camera occupy more pixels than people in the distance, so the heatmap
   is biased toward the foreground. A proper homography to top-down would
   fix this — out of scope for the MVP.
+- **Small / distant people are missed.** `yolov8n` at 960px analysis
+  width can't reliably detect tiny figures in wide / aerial shots.
+  Bumping `YOLO_MODEL` to `yolov8m.pt` and `ANALYSIS_WIDTH` to 1920
+  helps a lot at the cost of ~5× CPU per frame.
+- **YouTube bot-detection.** Cloud / datacenter IPs hit "confirm you're
+  not a bot" gates from YouTube. Run from a residential network, or
+  pass browser cookies to `yt-dlp` (via `cookiefile` in
+  `stream.py:_resolve_hls`'s `ydl_opts`). The `BEACH_HEATMAP_SAMPLE_IMAGE`
+  env var bypasses YouTube entirely for testing.
 - **YouTube TOS.** Reading the HLS manifest via `yt-dlp` is fine for
   personal use; check the stream owner's terms before redistributing.
 - **No persistence.** Heatmap state is in-memory and resets on restart.
