@@ -5,8 +5,13 @@ const els = {
   view: document.getElementById('view'),
   refresh: document.getElementById('refresh'),
   count: document.getElementById('count'),
+  sunbed: document.getElementById('sunbed'),
+  lounger: document.getElementById('lounger'),
+  standing: document.getElementById('standing'),
   umbrellas: document.getElementById('umbrellas'),
+  thatched: document.getElementById('thatched'),
   busyness: document.getElementById('busyness'),
+  score: document.getElementById('score'),
   age: document.getElementById('age'),
   frames: document.getElementById('frames'),
   img: document.getElementById('viewer-img'),
@@ -50,8 +55,13 @@ async function refreshStats() {
     if (!res.ok) throw new Error('stats failed');
     const s = await res.json();
     els.count.textContent = s.people_count;
+    els.sunbed.textContent = s.sunbed_users;
+    els.lounger.textContent = s.sand_loungers;
+    els.standing.textContent = s.standing;
     els.umbrellas.textContent = s.umbrella_count;
+    els.thatched.textContent = s.thatched_umbrella_count;
     setBusyness(s.busyness);
+    els.score.textContent = Number.isFinite(s.busyness_score) ? s.busyness_score.toFixed(1) : '—';
     els.age.textContent = formatAge(s.last_frame_age_seconds);
     els.frames.textContent = s.frames_processed;
     if (s.frames_processed > 0) {

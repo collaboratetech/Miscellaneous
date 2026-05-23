@@ -43,15 +43,22 @@ HEATMAP_HALF_LIFE_SECONDS = 180  # 3 minutes
 # distant figures at the cost of some false positives.
 DETECTION_CONFIDENCE = 0.20
 
-# YOLO/COCO class IDs we treat as "evidence of activity":
+# YOLO/COCO class IDs we treat as detection targets:
 #   0  = person
-#   25 = umbrella (beach umbrellas are bigger and easier to detect
-#                  than prone bodies — strong proxy for occupied spots)
+#   25 = umbrella (split post-detection into thatched vs coloured —
+#                  see colour.classify_umbrella)
 TARGET_CLASSES: dict[int, str] = {0: "person", 25: "umbrella"}
 
-# Per-class weight in the density grid. People are the primary signal;
-# an umbrella usually covers 1-3 people, so weight it < 1.
-CLASS_WEIGHTS: dict[str, float] = {"person": 1.0, "umbrella": 0.5}
+# Per-kind weight in the density grid. People are the primary signal;
+# a coloured umbrella usually covers 1-3 people, so weight it < 1.
+# Thatched / straw umbrellas (the rented or beach-club fixtures common
+# on Mallorca) are permanent infrastructure — they're there whether or
+# not the beach is busy, so weight 0 so they don't inflate the heatmap.
+CLASS_WEIGHTS: dict[str, float] = {
+    "person": 1.0,
+    "umbrella": 0.5,
+    "umbrella_thatched": 0.0,
+}
 
 # Final Gaussian blur sigma applied AFTER splatting each detection as
 # its bounding-box rectangle. With box-shape splatting the rectangle
@@ -64,6 +71,22 @@ HEATMAP_BLOB_SIGMA = 12.0
 # from a ~150 m elevated position, so people on the sand are ~30-80 px
 # tall at 1920 — yolov8n at 960 misses most of them.
 ANALYSIS_WIDTH = 1920
+
+# Tile grid for sliced inference (rows, cols). (1, 1) = single pass on
+# the whole frame, like the original code. (2, 2) splits the frame into
+# four overlapping tiles and runs YOLO on each — effectively doubles the
+# per-pixel resolution YOLO sees, which catches small people in the
+# distance that get downsampled to invisibility at single-pass. Costs
+# ~rows*cols × the per-frame inference time.
+TILE_GRID: tuple[int, int] = (2, 2)
+
+# Fractional overlap between adjacent tiles, so detections that straddle
+# a tile boundary aren't truncated. 0.15 = 15% on each side.
+TILE_OVERLAP = 0.15
+
+# IoU threshold for de-duplicating detections that appear in multiple
+# overlapping tiles. Lower = more aggressive merging.
+DEDUP_IOU = 0.45
 
 # YOLO model file. yolov8n is fast but misses small/distant people;
 # yolov8m roughly doubles recall on this camera at ~5x CPU. For high-

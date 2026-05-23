@@ -82,33 +82,46 @@ class YouTubeLiveCapture(FrameSource):
         self._consecutive_failures = 0
         self._last_status: str | None = None
 
+    # Player-client fallback chain. YouTube rotates which clients hit
+    # the "confirm you're not a bot" gate, so we try several. The order
+    # matters: clients that historically work without a sign-in challenge
+    # come first.
+    _PLAYER_CLIENTS = ("tv_embedded", "android", "ios", "mweb", "default")
+
     def _resolve_hls(self) -> str:
         """Ask yt-dlp for the best HLS manifest URL <= target_height.
 
-        Uses the `tv_embedded` player client because the default web
-        client hits "confirm you're not a bot" gates on many cloud /
-        datacenter IPs. The TV-embedded client returns the same
-        live-broadcast HLS manifests without the gate.
+        Tries each YouTube player client in turn — the default web
+        client (and even tv_embedded) sometimes hits "confirm you're
+        not a bot" gates on cloud / datacenter IPs. Returns the first
+        one that succeeds.
         """
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "format": f"best[protocol^=m3u8][height<={self.target_height}]/best[protocol^=m3u8]/best",
-            "extractor_args": {"youtube": {"player_client": ["tv_embedded", "default"]}},
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(self.youtube_url, download=False)
-        url = info.get("url")
-        if not url:
-            # Some live formats expose the manifest under "formats".
-            for fmt in info.get("formats") or []:
-                if fmt.get("protocol", "").startswith("m3u8") and fmt.get("url"):
-                    url = fmt["url"]
-                    break
-        if not url:
-            raise RuntimeError("yt-dlp did not return a playable URL")
-        return url
+        last_error: Exception | None = None
+        for client in self._PLAYER_CLIENTS:
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "format": f"best[protocol^=m3u8][height<={self.target_height}]/best[protocol^=m3u8]/best",
+                "extractor_args": {"youtube": {"player_client": [client]}},
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(self.youtube_url, download=False)
+                url = info.get("url")
+                if not url:
+                    for fmt in info.get("formats") or []:
+                        if fmt.get("protocol", "").startswith("m3u8") and fmt.get("url"):
+                            url = fmt["url"]
+                            break
+                if url:
+                    log.info("HLS resolved via player_client=%s", client)
+                    return url
+            except Exception as e:
+                last_error = e
+                log.info("player_client=%s failed: %s", client, str(e).splitlines()[-1][:120])
+                continue
+        raise RuntimeError(f"yt-dlp could not resolve a playable URL (last error: {last_error})")
 
     def _open(self) -> None:
         if self._cap is not None:

@@ -20,27 +20,48 @@ YouTube live  ──►  yt-dlp (HLS URL)  ──►  OpenCV frame capture
 
 ## What the heatmap shows
 
-Each detected target (**person** or **beach umbrella**) is splatted
-onto the density grid as a *filled rectangle the size of its bounding
-box*, then the grid is Gaussian-blurred. So a person fills roughly the
-pixels they occupy, and a closer / larger person contributes more
-total heat than a smaller distant one — the heatmap reflects what the
-camera actually sees.
+Each detected target (**person**, **personal umbrella**, or
+**thatched parasol**) is splatted onto the density grid as a *filled
+rectangle the size of its bounding box*, then the grid is
+Gaussian-blurred. So a person fills roughly the pixels they occupy,
+and a closer / larger person contributes more total heat than a
+smaller distant one — the heatmap reflects what the camera actually
+sees.
 
-Umbrellas are detected because beach cams catch lots of prone bodies
-that YOLO struggles with, but the rented umbrellas above those bodies
-are big, brightly coloured, and easy to spot. They contribute to the
-heatmap at half the per-pixel weight of a person, on the assumption
-that one umbrella ≈ 1–3 occupants. (Note: in *very* aerial views like
-the Santa Ponsa cam, even umbrellas can be too small at 15 px — see
-the daytime sample in `samples/`.)
+To improve recall on distant people, YOLO runs on a **grid of
+overlapping tiles** of the source frame (default 2×2 with 15%
+overlap) and results are merged via per-class NMS — effectively
+doubles the per-pixel resolution the model sees.
+
+Umbrellas are detected as a secondary signal because beach cams catch
+lots of prone bodies that YOLO struggles with, but the umbrellas
+above those bodies are bigger and easier to spot. Detections are then
+split by colour:
+
+- **Coloured / personal umbrellas** (striped, bright) — count as
+  activity. Heatmap weight 0.5 (assuming each covers 1–3 people).
+- **Thatched / hay parasols** (brown, low saturation) — permanent
+  beach-club infrastructure. They're there whether or not anyone is
+  renting them, so heatmap weight 0 and they're listed separately in
+  the stats.
+
+### Breakdown of the person count
+
+Each detected person is also bucketed into one of three categories:
+
+- **On sunbeds (thatched)** — person bbox overlaps a thatched
+  parasol → using the rented infrastructure.
+- **Lying on sand** — horizontal bbox (`w > 1.2 × h`), not under a
+  thatched parasol → on a towel or own sunbed.
+- **Standing / walking** — everything else: vertical bbox,
+  promenade / waterline activity.
 
 Detections persist for 10 minutes but decay with a 3-minute half-life,
 so the colour intensity reflects "where activity has been recently",
 weighted toward right now. Empty stretches of beach stay uncoloured.
-The numeric **People in frame** + **Umbrellas** counters show the
-most-recent-frame detection counts; busyness (quiet / moderate / busy
-/ packed) is mapped from the person count alone.
+Busyness (quiet / moderate / busy / packed) is mapped from the person
+count alone; the **busyness score** is `people + 1.5 × coloured_umbrellas`
+for a combined activity metric.
 
 ## Project layout
 
@@ -103,13 +124,32 @@ if your CPU can't keep up.
 
 ## API
 
-| Endpoint                              | Returns                                   |
-| ------------------------------------- | ----------------------------------------- |
-| `GET /api/beaches`                    | List of configured beaches                |
-| `GET /api/beaches/{id}/stats`         | JSON: count, busyness, frame age, errors  |
-| `GET /api/beaches/{id}/frame.jpg`     | Latest raw frame                          |
-| `GET /api/beaches/{id}/overlay.jpg`   | Frame + heatmap overlay                   |
-| `GET /api/beaches/{id}/heatmap.jpg`   | Heatmap alone (debug)                     |
+| Endpoint                              | Returns                                                    |
+| ------------------------------------- | ---------------------------------------------------------- |
+| `GET /api/beaches`                    | List of configured beaches                                 |
+| `GET /api/beaches/{id}/stats`         | Full JSON breakdown — see below                            |
+| `GET /api/beaches/{id}/frame.jpg`     | Latest raw frame                                           |
+| `GET /api/beaches/{id}/overlay.jpg`   | Frame + heatmap overlay                                    |
+| `GET /api/beaches/{id}/heatmap.jpg`   | Heatmap alone (debug)                                      |
+
+`/stats` returns:
+
+```json
+{
+  "id": "santa-ponsa", "name": "Santa Ponsa",
+  "people_count": 14,
+  "umbrella_count": 4,            // coloured / personal
+  "thatched_umbrella_count": 1,    // permanent infra (excluded from heatmap)
+  "sunbed_users": 0,               // persons under a thatched parasol
+  "sand_loungers": 0,              // horizontal-bbox persons not under a thatched parasol
+  "standing": 14,                  // remaining persons (upright / walking)
+  "busyness": "moderate",
+  "busyness_score": 20.0,          // people + 1.5 * coloured_umbrellas
+  "frames_processed": 15,
+  "last_frame_age_seconds": 2.9,
+  "last_error": null
+}
+```
 
 While the first frame is being processed, image endpoints return `204`.
 
@@ -141,10 +181,13 @@ so it'll show up automatically.
 | `HEATMAP_WINDOW_SECONDS`      | How far back the heatmap "remembers"                      | `600`        |
 | `HEATMAP_HALF_LIFE_SECONDS`   | How quickly recent activity dominates older activity      | `180`        |
 | `HEATMAP_BLOB_SIGMA`          | Size of each person's contribution (pixels @ analysis res)| `22.0`       |
-| `ANALYSIS_WIDTH`              | Inference resolution; higher = more accurate + slower     | `1920`       |
+| `ANALYSIS_WIDTH`              | Inference resolution per tile; higher = more accurate     | `1920`       |
 | `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a target"                   | `0.20`       |
 | `TARGET_CLASSES`              | COCO classes to detect (default: person + umbrella)       | see config   |
-| `CLASS_WEIGHTS`               | Per-class heatmap weighting                               | person=1.0, umbrella=0.5 |
+| `CLASS_WEIGHTS`               | Per-kind heatmap weighting (`umbrella_thatched=0` to exclude) | person=1.0, umbrella=0.5, thatched=0.0 |
+| `TILE_GRID`                   | (rows, cols) for sliced inference; (1,1) disables tiling  | `(2, 2)`     |
+| `TILE_OVERLAP`                | Fractional overlap between tiles                          | `0.15`       |
+| `DEDUP_IOU`                   | IoU threshold for cross-tile NMS                          | `0.45`       |
 | `YOLO_MODEL`                  | `yolov8n.pt` (fastest) … `yolov8x.pt` (most accurate)     | `yolov8m.pt` |
 | `BUSY_THRESHOLDS`             | People-count bands for the busyness label                 | see config   |
 

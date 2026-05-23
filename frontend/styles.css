@@ -78,7 +78,7 @@ main {
 .stats {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
 }
 

@@ -59,7 +59,13 @@ class BeachStats(BaseModel):
     name: str
     people_count: int
     umbrella_count: int
+    thatched_umbrella_count: int
+    # Breakdown of people_count:
+    sunbed_users: int
+    sand_loungers: int
+    standing: int
     busyness: str
+    busyness_score: float
     frames_processed: int
     last_frame_age_seconds: float | None
     last_error: str | None
@@ -96,12 +102,21 @@ def beach_stats(beach_id: str) -> BeachStats:
     s = analyzer.state
     with s.lock:
         age = (time.time() - s.last_frame_time) if s.last_frame_time else None
+        # General busyness score: persons weighted 1, coloured umbrellas
+        # 1.5 each (each typically covers a small group), sunbed users
+        # already inside person count so no double-count.
+        score = s.last_people_count + 1.5 * s.last_umbrella_count
         return BeachStats(
             id=analyzer.beach.id,
             name=analyzer.beach.name,
             people_count=s.last_people_count,
             umbrella_count=s.last_umbrella_count,
+            thatched_umbrella_count=s.last_thatched_umbrella_count,
+            sunbed_users=s.last_sunbed_users,
+            sand_loungers=s.last_sand_loungers,
+            standing=s.last_standing,
             busyness=_busyness_label(s.last_people_count),
+            busyness_score=score,
             frames_processed=s.frames_processed,
             last_frame_age_seconds=age,
             last_error=s.last_error,

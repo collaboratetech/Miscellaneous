@@ -32,6 +32,11 @@ class BeachState:
     last_frame_time: float = 0.0
     last_people_count: int = 0
     last_umbrella_count: int = 0
+    last_thatched_umbrella_count: int = 0
+    # Breakdown of the person count, in the same frame:
+    last_sunbed_users: int = 0   # under a thatched (permanent) umbrella
+    last_sand_loungers: int = 0  # lying flat on sand or towel (no thatched umbrella)
+    last_standing: int = 0       # upright / walking
     frames_processed: int = 0
     last_error: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -94,6 +99,9 @@ class BeachAnalyzer:
             confidence=cfg.DETECTION_CONFIDENCE,
             analysis_width=cfg.ANALYSIS_WIDTH,
             target_classes=cfg.TARGET_CLASSES,
+            tile_grid=cfg.TILE_GRID,
+            tile_overlap=cfg.TILE_OVERLAP,
+            dedup_iou=cfg.DEDUP_IOU,
         )
         boxes = [
             (d.x, d.y, d.w, d.h, d.confidence * cfg.CLASS_WEIGHTS.get(d.kind, 1.0))
@@ -102,6 +110,8 @@ class BeachAnalyzer:
         self._heatmap.add(boxes, timestamp=frame.timestamp)
         people = sum(1 for d in detections if d.kind == "person")
         umbrellas = sum(1 for d in detections if d.kind == "umbrella")
+        thatched = sum(1 for d in detections if d.kind == "umbrella_thatched")
+        sunbed_users, sand_loungers, standing = _categorize_persons(detections)
 
         density = self._heatmap.density(width=aw, height=ah, now=frame.timestamp)
         # Upscale density to source-frame size for the overlay.
@@ -121,17 +131,53 @@ class BeachAnalyzer:
             self.state.last_frame_time = frame.timestamp
             self.state.last_people_count = people
             self.state.last_umbrella_count = umbrellas
+            self.state.last_thatched_umbrella_count = thatched
+            self.state.last_sunbed_users = sunbed_users
+            self.state.last_sand_loungers = sand_loungers
+            self.state.last_standing = standing
             self.state.frames_processed += 1
             self.state.last_error = None
 
         log.debug(
-            "%s: frame %d, %d people + %d umbrellas",
-            self.beach.id, self.state.frames_processed, people, umbrellas,
+            "%s: frame %d, %d people + %d umbrellas (+%d thatched, ignored)",
+            self.beach.id, self.state.frames_processed, people, umbrellas, thatched,
         )
 
     def snapshot(self) -> BeachState:
         # Caller is expected to access state under state.lock if needed.
         return self.state
+
+
+def _categorize_persons(detections) -> tuple[int, int, int]:
+    """Bucket person detections into sunbed users / sand loungers / standing.
+
+    - sunbed_users: person bbox overlaps a thatched (permanent) umbrella —
+      they're using the rented infrastructure.
+    - sand_loungers: any other person whose bbox is roughly horizontal
+      (w > 1.2 * h) — lying flat on the sand or a towel.
+    - standing: everyone else (upright walkers / paddlers).
+    """
+    thatched_boxes = [
+        (d.x - d.w / 2, d.y - d.h / 2, d.x + d.w / 2, d.y + d.h / 2)
+        for d in detections if d.kind == "umbrella_thatched"
+    ]
+    sunbed = lounger = standing = 0
+    for d in detections:
+        if d.kind != "person":
+            continue
+        px1, py1 = d.x - d.w / 2, d.y - d.h / 2
+        px2, py2 = d.x + d.w / 2, d.y + d.h / 2
+        under_thatched = any(
+            min(px2, ux2) > max(px1, ux1) and min(py2, uy2) > max(py1, uy1)
+            for ux1, uy1, ux2, uy2 in thatched_boxes
+        )
+        if under_thatched:
+            sunbed += 1
+        elif d.w > d.h * 1.2:
+            lounger += 1
+        else:
+            standing += 1
+    return sunbed, lounger, standing
 
 
 def _build_source(beach: cfg.Beach) -> FrameSource:
