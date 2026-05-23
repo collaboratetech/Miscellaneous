@@ -39,9 +39,10 @@ HEATMAP_WINDOW_SECONDS = 600  # 10 minutes
 # weight in the heatmap. Recent detections count more than old ones.
 HEATMAP_HALF_LIFE_SECONDS = 180  # 3 minutes
 
-# Person-detection confidence threshold (0..1). Lower catches more
-# distant figures at the cost of some false positives.
-DETECTION_CONFIDENCE = 0.20
+# YOLO confidence threshold. Lower catches more distant figures at the
+# cost of some false positives — 0.15 is the sweet spot at 3x3 tiling
+# on the Santa Ponsa daylight feed.
+DETECTION_CONFIDENCE = 0.15
 
 # YOLO/COCO class IDs we treat as detection targets:
 #   0  = person
@@ -73,12 +74,12 @@ HEATMAP_BLOB_SIGMA = 12.0
 ANALYSIS_WIDTH = 1920
 
 # Tile grid for sliced inference (rows, cols). (1, 1) = single pass on
-# the whole frame, like the original code. (2, 2) splits the frame into
-# four overlapping tiles and runs YOLO on each — effectively doubles the
-# per-pixel resolution YOLO sees, which catches small people in the
-# distance that get downsampled to invisibility at single-pass. Costs
-# ~rows*cols × the per-frame inference time.
-TILE_GRID: tuple[int, int] = (2, 2)
+# the whole frame. Higher density catches smaller / more-distant people
+# at proportional CPU cost. (3, 3) is the empirical sweet spot for the
+# Santa Ponsa-style high-elevation beach cam — 4x4 makes tiles small
+# enough that mid-sized people get split across boundaries even with
+# 15% overlap, which actually reduces recall.
+TILE_GRID: tuple[int, int] = (3, 3)
 
 # Fractional overlap between adjacent tiles, so detections that straddle
 # a tile boundary aren't truncated. 0.15 = 15% on each side.

@@ -29,9 +29,12 @@ smaller distant one — the heatmap reflects what the camera actually
 sees.
 
 To improve recall on distant people, YOLO runs on a **grid of
-overlapping tiles** of the source frame (default 2×2 with 15%
-overlap) and results are merged via per-class NMS — effectively
-doubles the per-pixel resolution the model sees.
+overlapping tiles** of the source frame (default 3×3 with 15% overlap)
+and results are merged via per-class NMS — each tile gets ~3× the
+per-pixel resolution a single full-frame pass would give YOLO.
+Empirically 3×3 is the sweet spot for high-elevation beach cams; 4×4
+makes tiles small enough that mid-sized people get split across
+boundaries and recall drops.
 
 Umbrellas are detected as a secondary signal because beach cams catch
 lots of prone bodies that YOLO struggles with, but the umbrellas
@@ -182,10 +185,10 @@ so it'll show up automatically.
 | `HEATMAP_HALF_LIFE_SECONDS`   | How quickly recent activity dominates older activity      | `180`        |
 | `HEATMAP_BLOB_SIGMA`          | Size of each person's contribution (pixels @ analysis res)| `22.0`       |
 | `ANALYSIS_WIDTH`              | Inference resolution per tile; higher = more accurate     | `1920`       |
-| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a target"                   | `0.20`       |
+| `DETECTION_CONFIDENCE`        | YOLO score floor for "this is a target"                   | `0.15`       |
 | `TARGET_CLASSES`              | COCO classes to detect (default: person + umbrella)       | see config   |
 | `CLASS_WEIGHTS`               | Per-kind heatmap weighting (`umbrella_thatched=0` to exclude) | person=1.0, umbrella=0.5, thatched=0.0 |
-| `TILE_GRID`                   | (rows, cols) for sliced inference; (1,1) disables tiling  | `(2, 2)`     |
+| `TILE_GRID`                   | (rows, cols) for sliced inference; (1,1) disables tiling  | `(3, 3)`     |
 | `TILE_OVERLAP`                | Fractional overlap between tiles                          | `0.15`       |
 | `DEDUP_IOU`                   | IoU threshold for cross-tile NMS                          | `0.45`       |
 | `YOLO_MODEL`                  | `yolov8n.pt` (fastest) … `yolov8x.pt` (most accurate)     | `yolov8m.pt` |
