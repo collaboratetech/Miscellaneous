@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Point of Sail</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <h1>Point of Sail</h1>
+      <p class="app__tagline">
+        The wind blows down from the top. Turn the yacht and see where she sits
+        relative to the wind.
+      </p>
+    </header>
+
+    <section class="diagram" aria-label="Wind and boat diagram">
+      <!-- The SVG is the live diagram. Boat group is rotated by JS. -->
+      <svg id="scene" viewBox="0 0 400 400" role="img"
+           aria-describedby="readout-summary">
+        <defs>
+          <marker id="windhead" markerWidth="8" markerHeight="8"
+                  refX="4" refY="6" orient="auto">
+            <path d="M0,0 L4,6 L8,0 Z" class="wind-arrowhead" />
+          </marker>
+        </defs>
+
+        <!-- No-go zone wedge (filled by JS so it tracks the angles) -->
+        <path id="nogo" class="nogo" />
+
+        <!-- Wind arrows, blowing top -> bottom -->
+        <g class="wind-arrows" aria-hidden="true">
+          <line x1="120" y1="14" x2="120" y2="70" marker-end="url(#windhead)" />
+          <line x1="200" y1="6"  x2="200" y2="74" marker-end="url(#windhead)" />
+          <line x1="280" y1="14" x2="280" y2="70" marker-end="url(#windhead)" />
+        </g>
+        <text x="200" y="96" class="wind-label" text-anchor="middle">WIND</text>
+
+        <!-- Compass ring -->
+        <circle cx="200" cy="210" r="150" class="ring" />
+        <circle cx="200" cy="210" r="3" class="ring-center" />
+
+        <!-- Boat: drawn pointing straight up, rotated about (200,210) by JS -->
+        <g id="boat" transform="rotate(0 200 210)">
+          <!-- mainsail, set by JS (path d + transform) -->
+          <path id="sail" class="sail" />
+          <!-- hull -->
+          <path class="hull"
+                d="M200,150
+                   C212,172 214,210 208,250
+                   L192,250
+                   C186,210 188,172 200,150 Z" />
+          <!-- mast -->
+          <circle cx="200" cy="196" r="3.5" class="mast" />
+        </g>
+      </svg>
+    </section>
+
+    <section class="readout" aria-live="polite">
+      <p id="readout-summary" class="readout__point">Beam reach</p>
+      <div class="readout__grid">
+        <div><span class="readout__k">Heading</span><span id="r-heading" class="readout__v">090°</span></div>
+        <div><span class="readout__k">Wind angle</span><span id="r-twa" class="readout__v">90°</span></div>
+        <div><span class="readout__k">Tack</span><span id="r-tack" class="readout__v">Port</span></div>
+      </div>
+      <p id="readout-trim" class="readout__trim">Sails roughly halfway out.</p>
+    </section>
+
+    <section class="controls">
+      <label for="heading" class="controls__label">
+        Boat heading relative to the wind
+      </label>
+      <input type="range" id="heading" min="0" max="359" value="90" step="1" />
+      <div class="controls__hint">
+        Drag the slider, click the diagram, or use the arrow keys.
+      </div>
+    </section>
+
+    <footer class="legend">
+      <h2>Points of sail</h2>
+      <ul id="legend-list"></ul>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
